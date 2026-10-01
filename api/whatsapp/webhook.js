@@ -46,7 +46,7 @@ export default async function handler(req, res) {
   // Controlled test mode: only the existing allowlisted test sender may request AI.
   const token = process.env.META_PA_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const allowedRecipient = "97470366703";
+  const allowedUsers = {\n    "97470366703": { name: "Marwan", role: "owner" },\n    "97430168134": { name: "Louza", role: "wife" }\n  };
   if (!token || !phoneId) {
     console.error("WhatsApp test reply configuration missing");
     return res.status(200).send("EVENT_RECEIVED");
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
       if (change?.field !== "messages" ||
           String(change?.value?.metadata?.phone_number_id) !== phoneId) continue;
       for (const message of change?.value?.messages ?? []) {
-        if (message?.type !== "text" || message?.from !== allowedRecipient) continue;
+        const user = allowedUsers[message?.from];\n        if (message?.type !== "text" || !user) continue;
         try {
           let reply = "PA test successful. To test AI, start your message with PA AI: followed by a question.";
           const prompt = message.text?.body?.trim() ?? "";
@@ -99,7 +99,7 @@ export default async function handler(req, res) {
               },
               body: JSON.stringify({
                 messaging_product: "whatsapp",
-                to: allowedRecipient,
+                to: message.from,
                 type: "text",
                 text: { body: reply.slice(0, 3500) }
               })
