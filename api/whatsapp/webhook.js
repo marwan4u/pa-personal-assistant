@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     return res.status(400).send("Invalid payload");
   }
 
-  // Test mode only: no persistence or AI processing.
+  // Controlled test mode: only the existing allowlisted test sender may request AI.
   const token = process.env.META_PA_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const allowedRecipient = "97470366703";
@@ -58,6 +58,37 @@ export default async function handler(req, res) {
       for (const message of change?.value?.messages ?? []) {
         if (message?.type !== "text" || message?.from !== allowedRecipient) continue;
         try {
+          let reply = "PA test successful. To test AI, start your message with PA AI: followed by a question.";
+          const prompt = message.text?.body?.trim() ?? "";
+          if (/^PA AI:/i.test(prompt)) {
+            const apiKey = process.env.OPENAI_API_KEY;
+            if (!apiKey) {
+              reply = "PA AI is not configured yet.";
+            } else if (prompt.length > 1200) {
+              reply = "Please send a shorter question (under 1,200 characters).";
+            } else {
+              const ai = await fetch("https://api.openai.com/v1/responses", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "gpt-4.1-mini",
+                  instructions: "You are PA in an early, isolated WhatsApp test. Answer concisely. You do not have access to Gmail, Drive, personal records, reminders or any tools. Never claim to have performed an action or accessed private data. If asked to do so, explain that integration is not enabled.",
+                  input: prompt.replace(/^PA AI:\s*/i, ""),
+                  max_output_tokens: 250,
+                  store: false
+                }),
+                signal: AbortSignal.timeout(18000)
+              });
+              if (ai.ok) {
+                const data = await ai.json();
+                reply = (data.output ?? []).flatMap(item => item.content ?? [])
+                  .filter(item => item.type === "output_text").map(item => item.text).join("\n").trim() || "I could not produce a reply. Please try again.";
+              } else {
+                console.error("PA AI request failed", ai.status);
+                reply = "PA AI is temporarily unavailable. Please try again later.";
+              }
+            }
+          }
           const response = await fetch(
             `https://graph.facebook.com/v26.0/${encodeURIComponent(phoneId)}/messages`,
             {
@@ -70,7 +101,7 @@ export default async function handler(req, res) {
                 messaging_product: "whatsapp",
                 to: allowedRecipient,
                 type: "text",
-                text: { body: "PA test successful. Your WhatsApp message reached the assistant. AI replies are not enabled yet." }
+                text: { body: reply.slice(0, 3500) }
               })
             }
           );
