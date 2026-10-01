@@ -43,14 +43,13 @@ export default async function handler(req, res) {
     return res.status(400).send("Invalid payload");
   }
 
-  // Acknowledge immediately. Test mode only: no persistence or AI processing.
-  res.status(200).send("EVENT_RECEIVED");
+  // Test mode only: no persistence or AI processing.
   const token = process.env.META_PA_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const allowedRecipient = "97470366703";
   if (!token || !phoneId) {
     console.error("WhatsApp test reply configuration missing");
-    return;
+    return res.status(200).send("EVENT_RECEIVED");
   }
   for (const entry of body?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
@@ -83,4 +82,5 @@ export default async function handler(req, res) {
       }
     }
   }
+  return res.status(200).send("EVENT_RECEIVED");
 }
