@@ -1,6 +1,6 @@
-import crypto from "node:crypto";
+const crypto = require("node:crypto");
 
-export const config = { api: { bodyParser: false } };
+const config = { api: { bodyParser: false } };
 
 async function readRawBody(req) {
   const chunks = [];
@@ -13,7 +13,7 @@ async function readRawBody(req) {
   return Buffer.concat(chunks);
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method === "GET") {
     const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
@@ -115,3 +115,6 @@ export default async function handler(req, res) {
   }
   return res.status(200).send("EVENT_RECEIVED");
 }
+
+module.exports = handler;
+module.exports.config = config;
