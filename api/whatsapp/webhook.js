@@ -1,10 +1,6 @@
-const crypto = require("node:crypto");\nconst { resolveWhatsAppUser, claimInbound } = require("../lib/supabase-server");
+const crypto = require("node:crypto");
+const { resolveWhatsAppUser, claimInbound } = require("../lib/supabase-server");
 const config = { api: { bodyParser: false } };
-
-const USERS = {
-  "97470366703": { name: "Marwan", role: "owner" },
-  "97430168134": { name: "Louza", role: "wife" }
-};
 
 async function readRawBody(req) {
   const chunks = []; let size = 0;
@@ -17,10 +13,10 @@ async function readRawBody(req) {
 }
 
 function instructions(user) {
-  const base = "You are PA, personal assistant to Marwan and his wife Louza. Answer the request directly. Keep replies short, simple, useful and natural unless detail is requested. No unnecessary greetings, filler or test language. Never require a PA AI prefix. If information is unavailable, say so briefly and suggest the easiest useful next step. Never claim access or an action you do not actually have.";
+  const base = "You are PA, a private personal assistant. Continue the conversation naturally and use available authorized context. Keep answers practical and direct, but give detail when it helps. Do not act like a stateless test bot. Never invent access, stored facts, completed actions, or tool results. If information is missing, say what is missing and propose the easiest next step.";
   return user.role === "wife"
-    ? base + " You are speaking with Louza. Be warm and dependable. Make it easy for her to ask PA directly for routine help. Do not pressure her, speak for Marwan, imply she needs his permission, conceal information, or override her privacy."
-    : base + " You are speaking with Marwan.";
+    ? base + " You are speaking with Louza. Be warm and dependable. Respect her privacy and autonomy."
+    : base + " You are speaking with Marwan, the PA owner.";
 }
 
 async function sendText(phoneId, token, to, text) {
@@ -52,7 +48,9 @@ async function handler(req, res) {
     if (typeof sig !== "string" || sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)))
       return res.status(403).send("Invalid signature");
     body = JSON.parse(raw.toString("utf8"));
-  } catch { return res.status(400).send("Invalid payload"); }
+  } catch {
+    return res.status(400).send("Invalid payload");
+  }
 
   const token = process.env.META_PA_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -61,10 +59,20 @@ async function handler(req, res) {
   for (const entry of body?.entry ?? []) for (const change of entry?.changes ?? []) {
     if (change?.field !== "messages" || String(change?.value?.metadata?.phone_number_id) !== phoneId) continue;
     for (const message of change?.value?.messages ?? []) {
-      const user = USERS[message?.from];
-      if (!user || message?.type !== "text") continue;
+      if (message?.type !== "text") continue;
+      let dbUser;
+      try { dbUser = await resolveWhatsAppUser(message.from); }
+      catch (e) { console.error("Identity lookup failed", e?.message); continue; }
+      if (!dbUser) continue;
+
+      let claimed;
+      try { claimed = await claimInbound(message.id, dbUser.id); }
+      catch (e) { console.error("Inbound claim failed", e?.message); continue; }
+      if (!claimed) continue;
+
       const prompt = message.text?.body?.trim();
       if (!prompt) continue;
+      const role = message.from === "97470366703" ? "owner" : "wife";
       let reply = "PA is temporarily unavailable.";
       try {
         const key = process.env.OPENAI_API_KEY;
@@ -72,7 +80,13 @@ async function handler(req, res) {
         const ai = await fetch("https://api.openai.com/v1/responses", {
           method: "POST",
           headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "gpt-4.1-mini", instructions: instructions(user), input: prompt.slice(0,4000), max_output_tokens: 300, store: false }),
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            instructions: instructions({ name: dbUser.name, role }),
+            input: prompt.slice(0, 4000),
+            max_output_tokens: 500,
+            store: false
+          }),
           signal: AbortSignal.timeout(18000)
         });
         if (ai.ok) {
@@ -82,10 +96,13 @@ async function handler(req, res) {
         const sent = await sendText(phoneId, token, message.from, reply);
         if (!sent.ok) console.error("WhatsApp reply failed", sent.status);
         else console.info("WhatsApp reply sent", message.id);
-      } catch (e) { console.error("PA reply error", e?.message); }
+      } catch (e) {
+        console.error("PA reply error", e?.message);
+      }
     }
   }
   return res.status(200).send("EVENT_RECEIVED");
 }
+
 module.exports = handler;
 module.exports.config = config;
