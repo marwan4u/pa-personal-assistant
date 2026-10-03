@@ -1,4 +1,4 @@
-const crypto = require("node:crypto");
+const crypto = require("node:crypto");\nconst { resolveWhatsAppUser, claimInbound } = require("../lib/supabase-server");
 const config = { api: { bodyParser: false } };
 
 const USERS = {
