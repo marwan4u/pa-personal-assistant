@@ -1,5 +1,5 @@
 const crypto = require("node:crypto");
-const { resolveWhatsAppUser, claimInbound } = require("../lib/supabase-server");
+const { resolveWhatsAppUser, claimInbound, searchIndexedDocuments } = require("../lib/supabase-server");
 const config = { api: { bodyParser: false } };
 
 async function readRawBody(req) {
@@ -83,7 +83,7 @@ async function handler(req, res) {
           body: JSON.stringify({
             model: "gpt-4.1-mini",
             instructions: instructions({ name: dbUser.name, role }),
-            input: prompt.slice(0, 4000),
+            input: [{ role: "user", content: [{ type: "input_text", text: `Authorized PA document context (use only when relevant; never invent beyond it):\\n${JSON.stringify(documentContext)}\\n\\nMarwan message: ${prompt.slice(0,4000)}` }] }],
             max_output_tokens: 500,
             store: false
           }),
