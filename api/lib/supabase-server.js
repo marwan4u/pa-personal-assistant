@@ -27,4 +27,16 @@ async function claimInbound(providerEventId,userId){
     return true;
   }catch(e){ if(String(e.message).includes("409")) return false; throw e; }
 }
-module.exports={resolveWhatsAppUser,claimInbound};
+async function createOAuthState(stateHash,userId){
+ await request("pa_oauth_states",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({state_hash:stateHash,user_id:userId,provider:"google",expires_at:new Date(Date.now()+10*60*1000).toISOString()})});
+}
+async function consumeOAuthState(stateHash){
+ const rows=await request("pa_oauth_states?state_hash=eq."+encodeURIComponent(stateHash)+"&provider=eq.google&consumed_at=is.null&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&select=id,user_id&limit=1");
+ if(!Array.isArray(rows)||rows.length!==1) return null;
+ await request("pa_oauth_states?id=eq."+rows[0].id,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({consumed_at:new Date().toISOString()})});
+ return rows[0];
+}
+async function upsertConnectedAccount(row){
+ return request("pa_connected_accounts?user_id=eq."+row.user_id+"&provider=eq.google_drive",{method:"DELETE",headers:{Prefer:"return=minimal"}}).then(()=>request("pa_connected_accounts",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(row)}));
+}
+module.exports={resolveWhatsAppUser,claimInbound,createOAuthState,consumeOAuthState,upsertConnectedAccount};
