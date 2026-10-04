@@ -43,4 +43,11 @@ async function getConnectedAccount(userId,provider){
  const rows=await request("pa_connected_accounts?user_id=eq."+encodeURIComponent(userId)+"&provider=eq."+encodeURIComponent(provider)+"&status=eq.active&select=provider_subject,token_secret_reference&limit=1");
  return Array.isArray(rows)&&rows.length===1?rows[0]:null;
 }
-module.exports={resolveWhatsAppUser,claimInbound,createOAuthState,consumeOAuthState,upsertConnectedAccount,getConnectedAccount};
+async function searchIndexedDocuments(queryText){
+ const words=String(queryText||"").toLowerCase().match(/[a-z0-9]{4,}/g)||[];
+ const terms=[...new Set(words)].filter(w=>!["when","what","where","this","that","with","from","expiring","expiry"].includes(w)).slice(0,6);
+ if(!terms.length) return [];
+ const ors=terms.flatMap(t=>["title.ilike.*"+t+"*","original_filename.ilike.*"+t+"*"]).join(",");
+ return request("documents?or=("+encodeURIComponent(ors)+")&select=title,document_type,expiry_date,document_number,drive_file_id,original_filename&limit=8");
+}
+module.exports={resolveWhatsAppUser,claimInbound,createOAuthState,consumeOAuthState,upsertConnectedAccount,getConnectedAccount,searchIndexedDocuments};
