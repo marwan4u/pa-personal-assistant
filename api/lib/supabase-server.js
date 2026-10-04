@@ -39,4 +39,8 @@ async function consumeOAuthState(stateHash){
 async function upsertConnectedAccount(row){
  return request("pa_connected_accounts?user_id=eq."+row.user_id+"&provider=eq.google_drive",{method:"DELETE",headers:{Prefer:"return=minimal"}}).then(()=>request("pa_connected_accounts",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(row)}));
 }
-module.exports={resolveWhatsAppUser,claimInbound,createOAuthState,consumeOAuthState,upsertConnectedAccount};
+async function getConnectedAccount(userId,provider){
+ const rows=await request("pa_connected_accounts?user_id=eq."+encodeURIComponent(userId)+"&provider=eq."+encodeURIComponent(provider)+"&status=eq.active&select=provider_subject,token_secret_reference&limit=1");
+ return Array.isArray(rows)&&rows.length===1?rows[0]:null;
+}
+module.exports={resolveWhatsAppUser,claimInbound,createOAuthState,consumeOAuthState,upsertConnectedAccount,getConnectedAccount};
